@@ -1,0 +1,1373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0a0f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<title>θ WAVE v3.0 — Attentional Blink Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#08080f;--surface:#0f0f1a;--border:#1e1e30;
+    --theta:#00e5ff;--theta-dim:rgba(0,229,255,0.12);--theta-glow:rgba(0,229,255,0.4);
+    --danger:#ff3c5a;--danger-dim:rgba(255,60,90,0.2);
+    --text:#e8e8f0;--muted:#5a5a7a;--success:#39ff8a;--warning:#ffcc00;--amber:#ff9d00;
+    --font-mono:'Space Mono',monospace;--font-display:'Syne',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:var(--font-mono);min-height:100dvh;overflow:hidden;}
+  body::before{content:'';position:fixed;inset:0;
+    background-image:linear-gradient(rgba(0,229,255,0.025) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,229,255,0.025) 1px,transparent 1px);
+    background-size:40px 40px;pointer-events:none;z-index:0;}
+  body::after{content:'';position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:600px;height:600px;
+    background:radial-gradient(ellipse,rgba(0,229,255,0.04) 0%,transparent 70%);
+    pointer-events:none;z-index:0;}
+
+  .screen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;z-index:10;transition:opacity 0.35s ease;padding:24px;}
+  .screen.hidden{opacity:0;pointer-events:none;}
+
+  /* HOME */
+  #home-screen{gap:18px;overflow-y:auto;justify-content:flex-start;
+    padding:44px 24px 64px;position:absolute;}
+  .logo-theta{font-family:var(--font-display);font-size:clamp(52px,15vw,96px);font-weight:800;
+    color:var(--theta);text-shadow:0 0 60px var(--theta-glow);line-height:1;letter-spacing:-2px;}
+  .logo-sub{font-family:var(--font-display);font-size:clamp(10px,2.5vw,13px);
+    letter-spacing:4px;text-transform:uppercase;color:var(--muted);}
+  .badge-row{display:flex;gap:7px;flex-wrap:wrap;justify-content:center;}
+  .badge{background:var(--theta-dim);border:1px solid rgba(0,229,255,0.2);border-radius:20px;
+    padding:3px 10px;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--theta);}
+  .info-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    padding:16px 18px;max-width:420px;width:100%;}
+  .info-card h3{font-family:var(--font-display);font-size:10px;letter-spacing:4px;
+    text-transform:uppercase;color:var(--theta);margin-bottom:10px;}
+  .info-card p{font-size:12px;line-height:1.75;color:var(--muted);}
+  .changelog{max-width:420px;width:100%;background:rgba(255,157,0,0.07);
+    border:1px solid rgba(255,157,0,0.2);border-radius:10px;padding:10px 14px;
+    font-size:10px;line-height:1.7;color:var(--muted);}
+  .changelog strong{color:var(--warning);}
+
+  .btn-primary{background:var(--theta);color:var(--bg);border:none;border-radius:8px;
+    padding:13px 28px;font-family:var(--font-display);font-size:13px;font-weight:700;
+    letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.2s;
+    touch-action:manipulation;user-select:none;}
+  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 0 48px var(--theta-glow);}
+  .btn-primary:active{transform:translateY(0);}
+  .btn-secondary{background:transparent;color:var(--muted);border:1px solid var(--border);
+    border-radius:8px;padding:11px 22px;font-family:var(--font-display);font-size:11px;
+    font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.2s;
+    touch-action:manipulation;user-select:none;}
+  .btn-secondary:hover{border-color:var(--theta);color:var(--theta);}
+  .btn-row{display:flex;gap:9px;flex-wrap:wrap;justify-content:center;}
+
+  /* CALIBRATION */
+  #calibration-screen{gap:22px;}
+  .screen-title{font-family:var(--font-display);font-size:clamp(20px,5vw,26px);
+    font-weight:800;letter-spacing:-0.5px;}
+  .screen-sub{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);}
+  .calib-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;max-width:360px;}
+  .calib-item{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;}
+  .calib-label{font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+  .calib-val{font-family:var(--font-display);font-size:20px;font-weight:700;color:var(--theta);}
+  .calib-bar{height:3px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:6px;}
+  .calib-fill{height:100%;background:var(--theta);border-radius:2px;width:0%;transition:width 0.4s;}
+
+  /* TASK */
+  #task-screen{background:var(--bg);padding:0;}
+  #task-canvas{position:absolute;inset:0;width:100%;height:100%;cursor:none;}
+  .task-hud{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;
+    align-items:flex-start;padding:10px 16px;z-index:20;pointer-events:none;
+    background:linear-gradient(rgba(8,8,15,0.7),transparent);}
+  .hud-item{display:flex;flex-direction:column;gap:2px;}
+  .hud-label{font-size:7px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);}
+  .hud-val{font-family:var(--font-display);font-size:17px;font-weight:700;color:var(--theta);}
+  .hud-prog-bar{width:72px;height:3px;background:var(--border);border-radius:2px;margin-top:3px;}
+  .hud-prog-fill{height:100%;border-radius:2px;background:var(--theta);width:0%;}
+
+  #tap-overlay{position:fixed;inset:0;z-index:25;display:none;
+    -webkit-tap-highlight-color:transparent;touch-action:manipulation;
+    cursor:none;user-select:none;}
+  #tap-indicator{position:fixed;bottom:0;left:0;right:0;height:5px;
+    background:rgba(0,229,255,0.0);z-index:26;pointer-events:none;
+    transition:background 0.08s;}
+  #tap-indicator.tapped{background:rgba(0,229,255,0.35);}
+
+  /* RESULTS */
+  #results-screen{gap:18px;overflow-y:auto;padding:44px 24px 64px;justify-content:flex-start;}
+  .result-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;
+    padding:20px 22px;width:100%;max-width:480px;}
+  .result-hz{font-family:var(--font-display);font-size:clamp(42px,12vw,72px);font-weight:800;
+    color:var(--theta);line-height:1;text-shadow:0 0 40px var(--theta-glow);}
+  .result-unit{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-top:4px;}
+  .result-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;}
+  .result-item{background:rgba(0,229,255,0.04);border:1px solid var(--border);
+    border-radius:8px;padding:10px 12px;}
+  .result-label{font-size:8px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:4px;}
+  .result-val{font-family:var(--font-display);font-size:18px;font-weight:700;color:var(--text);}
+  .chart-wrap{width:100%;max-width:480px;background:var(--surface);
+    border:1px solid var(--border);border-radius:14px;padding:16px;}
+  .chart-label{font-size:9px;letter-spacing:3px;text-transform:uppercase;
+    color:var(--muted);margin-bottom:10px;}
+  canvas{display:block;}
+  .interp-card{background:rgba(0,229,255,0.04);border:1px solid rgba(0,229,255,0.15);
+    border-radius:12px;padding:16px 18px;max-width:480px;width:100%;
+    font-size:12px;line-height:1.75;color:var(--muted);}
+
+  /* HISTORY */
+  #history-screen{gap:18px;overflow-y:auto;padding:44px 24px 64px;justify-content:flex-start;}
+  .history-entry{background:var(--surface);border:1px solid var(--border);border-radius:10px;
+    padding:14px 16px;display:flex;justify-content:space-between;align-items:flex-start;
+    max-width:480px;width:100%;gap:12px;}
+  .history-hz{font-family:var(--font-display);font-size:22px;font-weight:700;color:var(--theta);}
+  .history-conf{font-size:10px;color:var(--muted);margin-top:4px;line-height:1.6;}
+  .history-meta{font-size:9px;color:var(--muted);text-align:right;line-height:1.7;white-space:nowrap;}
+
+  /* SETTINGS */
+  .settings-panel{background:var(--surface);border:1px solid var(--border);border-radius:14px;
+    padding:18px 20px;width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px;}
+  .settings-title{font-size:9px;letter-spacing:4px;text-transform:uppercase;color:var(--muted);}
+  .setting-row{display:flex;flex-direction:column;gap:6px;}
+  .setting-label{display:flex;justify-content:space-between;align-items:center;}
+  .setting-name{font-size:11px;color:var(--text);}
+  .setting-val{font-family:var(--font-display);font-size:13px;font-weight:700;color:var(--theta);}
+  .setting-slider{-webkit-appearance:none;appearance:none;width:100%;height:3px;
+    border-radius:2px;background:var(--border);outline:none;cursor:pointer;}
+  .setting-slider::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;
+    border-radius:50%;background:var(--theta);cursor:pointer;border:2px solid var(--bg);}
+  .setting-slider::-moz-range-thumb{width:18px;height:18px;border-radius:50%;
+    background:var(--theta);cursor:pointer;border:2px solid var(--bg);}
+  .settings-divider{height:1px;background:var(--border);margin:2px 0;}
+
+  /* TOAST */
+  #toast{position:fixed;bottom:32px;left:50%;transform:translateX(-50%);
+    background:var(--surface);border:1px solid var(--border);border-radius:8px;
+    padding:10px 20px;font-size:12px;color:var(--text);z-index:100;
+    transition:opacity 0.3s;pointer-events:none;}
+  #toast.hidden{opacity:0;}
+
+  /* INSTRUCTIONS */
+  .overlay{position:fixed;inset:0;background:rgba(8,8,15,0.94);z-index:50;
+    display:flex;align-items:center;justify-content:center;padding:24px;}
+  .overlay.hidden{display:none;}
+  .overlay-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;
+    padding:28px;max-width:400px;width:100%;max-height:80dvh;overflow-y:auto;}
+  .overlay-card h2{font-family:var(--font-display);font-size:18px;font-weight:800;
+    color:var(--theta);margin-bottom:16px;}
+  .overlay-card p{font-size:12px;line-height:1.8;color:var(--muted);margin-bottom:12px;}
+  .overlay-card strong{color:var(--text);}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════ HOME SCREEN -->
+<div id="home-screen" class="screen">
+  <div>
+    <div class="logo-theta">θ</div>
+    <div class="logo-sub">Neural Theta Frequency Estimator · v3.0</div>
+  </div>
+  <div class="badge-row">
+    <span class="badge">Twitch Paradigm</span>
+    <span class="badge">Structured Grid</span>
+    <span class="badge">Adaptive Contrast</span>
+    <span class="badge">Offline Curve Fit</span>
+    <span class="badge">CSV Export</span>
+  </div>
+  <div class="info-card">
+    <h3>What this measures</h3>
+    <p>A digit flashes among letters — tap when you see it. Shortly after, another digit appears — tap if you see it. Your pattern of misses across SOA and contrast levels reveals the attentional blink threshold curve. A damped sine is fitted offline to estimate theta frequency.</p>
+  </div>
+  <div class="changelog">
+    <strong>v3.0:</strong> Fully structured SOA × contrast grid &middot; Balanced randomised block design &middot; No adaptive engine — all cells pre-specified &middot; Threshold estimated per-SOA from detection rates &middot; Damped sine fitted offline to threshold curve
+  </div>
+
+  <div class="settings-panel">
+    <div class="settings-title">&#9881; Session Settings</div>
+
+    <div class="setting-row">
+      <div class="setting-label">
+        <span class="setting-name">Stream Speed</span>
+        <span class="setting-val" id="lbl-speed">—</span>
+      </div>
+      <input type="range" class="setting-slider" id="sl-speed" min="4" max="16" step="1" value="9" oninput="updateSettings()">
+    </div>
+
+    <div class="setting-row">
+      <div class="setting-label">
+        <span class="setting-name">T1 Font Size</span>
+        <span class="setting-val" id="lbl-t1font">—</span>
+      </div>
+      <input type="range" class="setting-slider" id="sl-t1font" min="48" max="108" step="8" value="96" oninput="updateSettings()">
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <div class="setting-row">
+      <div class="setting-label">
+        <span class="setting-name">SOA Max</span>
+        <span class="setting-val" id="lbl-soamax">—</span>
+      </div>
+      <input type="range" class="setting-slider" id="sl-soamax" min="400" max="1200" step="50" value="800" oninput="updateSettings()">
+    </div>
+
+    <div class="setting-row">
+      <div class="setting-label">
+        <span class="setting-name">Reps per Cell</span>
+        <span class="setting-val" id="lbl-reps">—</span>
+      </div>
+      <input type="range" class="setting-slider" id="sl-reps" min="2" max="8" step="1" value="4" oninput="updateSettings()">
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <div class="setting-row">
+      <div class="setting-label" style="justify-content:flex-start;gap:10px;">
+        <input type="checkbox" id="chk-mask" onchange="updateSettings()" style="accent-color:var(--theta);width:16px;height:16px;cursor:pointer;">
+        <span class="setting-name">Line Mask</span>
+        <span class="setting-val" style="font-size:9px;color:var(--muted);margin-left:auto;">may cue T2</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:10px;align-items:center;width:100%;max-width:240px;">
+    <button class="btn-primary" onclick="showScreen('calibration-screen')">Begin Session</button>
+    <button class="btn-secondary" onclick="showHistory()">Past Results</button>
+    <button class="btn-secondary" onclick="document.getElementById('instructions-overlay').classList.remove('hidden')">Instructions</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ INSTRUCTIONS -->
+<div id="instructions-overlay" class="overlay hidden">
+  <div class="overlay-card">
+    <h2>How to play</h2>
+    <p>A stream of letters flows across the screen. <strong>Digits</strong> occasionally appear among them.</p>
+    <p>When you see the <strong style="color:var(--theta)">first digit (T1)</strong> — tap anywhere as fast as you can.</p>
+    <p>Shortly after, a <strong style="color:var(--success)">second digit (T2)</strong> may appear — tap again if you see it. If you don't see it, don't tap — silence means miss.</p>
+    <p>Both digits are <strong>white</strong> against gray letters. T2 may be faint. T1 is 1–4, T2 is 6–9.</p>
+    <p>Keep your eyes on the centre throughout.</p>
+    <button class="btn-primary" style="width:100%;margin-top:8px;" onclick="document.getElementById('instructions-overlay').classList.add('hidden');showScreen('calibration-screen')">Got it — continue</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ CALIBRATION -->
+<div id="calibration-screen" class="screen hidden">
+  <div class="screen-title">Display Check</div>
+  <div class="screen-sub">Measuring refresh rate</div>
+  <div class="calib-grid">
+    <div class="calib-item">
+      <div class="calib-label">Refresh Rate</div>
+      <div class="calib-val" id="calib-hz">…</div>
+      <div class="calib-bar"><div class="calib-fill" id="calib-hz-bar"></div></div>
+    </div>
+    <div class="calib-item">
+      <div class="calib-label">Timing Jitter</div>
+      <div class="calib-val" id="calib-jitter">…</div>
+      <div class="calib-bar"><div class="calib-fill" id="calib-jitter-bar"></div></div>
+    </div>
+    <div class="calib-item">
+      <div class="calib-label">Frame Duration</div>
+      <div class="calib-val" id="calib-isi">…</div>
+    </div>
+    <div class="calib-item">
+      <div class="calib-label">Status</div>
+      <div class="calib-val" id="calib-status" style="font-size:14px;">…</div>
+    </div>
+  </div>
+  <div id="calib-btns" style="opacity:0;transition:opacity 0.5s;" class="btn-row">
+    <button class="btn-primary" onclick="startSession()">Start Task</button>
+    <button class="btn-secondary" onclick="showScreen('home-screen')">Back</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ TASK SCREEN -->
+<div id="task-screen" class="screen hidden">
+  <canvas id="task-canvas"></canvas>
+  <div class="task-hud">
+    <div class="hud-item">
+      <div class="hud-label">Trial</div>
+      <div class="hud-val" id="hud-trial">0</div>
+    </div>
+    <div class="hud-item" style="align-items:center;">
+      <div class="hud-label">Progress</div>
+      <div class="hud-prog-bar"><div class="hud-prog-fill" id="hud-prog"></div></div>
+    </div>
+    <div class="hud-item" style="align-items:center;">
+      <div class="hud-label">T1 RT</div>
+      <div class="hud-val" id="hud-t1rt">—</div>
+    </div>
+    <div class="hud-item" style="align-items:flex-end;">
+      <div class="hud-label">Contrast</div>
+      <div class="hud-val" id="hud-contrast">—</div>
+    </div>
+  </div>
+  <div id="tap-overlay"></div>
+  <div id="tap-indicator"></div>
+  <button class="btn-secondary" style="position:fixed;top:12px;right:12px;z-index:30;
+    padding:6px 12px;font-size:9px;opacity:0.4;" onclick="abortSession()">✕</button>
+</div>
+
+<!-- ═══════════════════════════════════════════ RESULTS SCREEN -->
+<div id="results-screen" class="screen hidden">
+  <div class="result-card" style="max-width:480px;width:100%;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <div>
+        <div class="result-hz" id="res-hz">—</div>
+        <div class="result-unit" id="res-unit">Hz (fitted)</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);">Fit Quality</div>
+        <div id="conf-label" style="font-family:var(--font-display);font-size:13px;font-weight:700;">—</div>
+      </div>
+    </div>
+    <div class="result-grid">
+      <div class="result-item">
+        <div class="result-label">Trough 1</div>
+        <div class="result-val" id="res-t1">—</div>
+      </div>
+      <div class="result-item">
+        <div class="result-label">Trough 2</div>
+        <div class="result-val" id="res-t2">—</div>
+      </div>
+      <div class="result-item">
+        <div class="result-label">Baseline</div>
+        <div class="result-val" id="res-baseline">—</div>
+      </div>
+      <div class="result-item">
+        <div class="result-label">Amplitude</div>
+        <div class="result-val" id="res-amp">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="chart-wrap">
+    <div class="chart-label">Empirical Detection Rate — by SOA &amp; Contrast</div>
+    <canvas id="det-chart"></canvas>
+  </div>
+  <div class="chart-wrap">
+    <div class="chart-label">Threshold Curve — fitted damped sine</div>
+    <canvas id="thr-chart"></canvas>
+  </div>
+
+  <div class="interp-card" id="blink-interp">—</div>
+
+  <div class="btn-row">
+    <button class="btn-primary" onclick="downloadCSV()">Export CSV</button>
+    <button class="btn-secondary" onclick="startSession()">Run Again</button>
+    <button class="btn-secondary" onclick="showScreen('home-screen')">Home</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ HISTORY -->
+<div id="history-screen" class="screen hidden">
+  <div class="screen-title">Past Sessions</div>
+  <div id="history-list" style="width:100%;max-width:480px;display:flex;flex-direction:column;gap:10px;"></div>
+  <div class="btn-row">
+    <button class="btn-secondary" onclick="clearHistory()">Clear</button>
+    <button class="btn-secondary" onclick="showScreen('home-screen')">Back</button>
+  </div>
+</div>
+
+<div id="toast" class="hidden">—</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════
+//  θ WAVE v3.0 — Structured Grid Paradigm
+//  Fully balanced SOA × contrast randomised block design.
+//  No adaptive engine. Threshold estimated per-SOA from detection rates.
+//  Damped sine fitted offline to threshold-vs-SOA curve.
+// ════════════════════════════════════════════════════════════════════
+
+// ── Screens ──────────────────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s =>
+    s.classList.toggle('hidden', s.id !== id));
+  if (id === 'calibration-screen') {
+    document.getElementById('calib-btns').style.opacity = '0';
+    setTimeout(calibrate, 150);
+  }
+  if (id === 'home-screen') updateSettings();
+}
+function showHistory() { renderHistory(); showScreen('history-screen'); }
+function toast(msg, ms=2200) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.remove('hidden');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.add('hidden'), ms);
+}
+
+// ── Calibration ───────────────────────────────────────────────────────
+let measuredFPS = 120;
+function calibrate() {
+  const times = []; let frames = 0; let last = 0;
+  function measure(ts) {
+    if (last) times.push(ts - last);
+    last = ts; frames++;
+    if (frames < 120) { requestAnimationFrame(measure); return; }
+    times.sort((a,b)=>a-b);
+    const med = times[Math.floor(times.length/2)];
+    measuredFPS = Math.round(1000/med);
+    const diffs = times.map(t=>Math.abs(t-med));
+    const jPct  = (diffs.reduce((a,b)=>a+b,0)/diffs.length/med*100);
+    const ok    = measuredFPS >= 55 && jPct < 8;
+    document.getElementById('calib-hz').textContent      = measuredFPS + ' Hz';
+    document.getElementById('calib-hz-bar').style.width  = Math.min(100,(measuredFPS/144)*100)+'%';
+    document.getElementById('calib-jitter').textContent  = jPct.toFixed(1)+'% σ';
+    document.getElementById('calib-jitter-bar').style.width = Math.max(0,100-jPct*10)+'%';
+    document.getElementById('calib-isi').textContent     = `1 frame (~${(1000/measuredFPS).toFixed(1)} ms)`;
+    document.getElementById('calib-status').textContent  = ok ? '✓ Ready' : '⚠ Low refresh';
+    document.getElementById('calib-status').style.color  = ok ? 'var(--success)' : 'var(--warning)';
+    document.getElementById('calib-btns').style.opacity  = '1';
+  }
+  requestAnimationFrame(measure);
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  STRUCTURED GRID
+//  SOAs: 10 values from SOA_MIN to soaMaxMs, quantised to frames.
+//  Contrasts: 6 fixed levels spanning low→high.
+//  Reps: repsPerCell repetitions of each SOA×contrast cell.
+//  Trial list: full grid × reps, shuffled (Fisher-Yates).
+//  No adaptive selection — every cell pre-specified at session start.
+// ════════════════════════════════════════════════════════════════════
+const SOA_MIN_MS   = 200; // floor — below this is sensory masking, not AB
+const GRID_N_SOAS  = 10;
+const GRID_CONTRASTS = [10, 20, 35, 55, 75, 90]; // %, 6 levels
+
+const GRID = (() => {
+  // Threshold estimation: for each SOA, fit a logistic to
+  // (contrast, p_detect) and read off the 75% point.
+  const SIGMA_LOGISTIC = 10; // assumed slope (% contrast)
+
+  function buildTrialList(soaMaxMs, repsPerCell, mspf) {
+    // Build SOA list: GRID_N_SOAS values from SOA_MIN_MS to soaMaxMs,
+    // each quantised to nearest frame boundary.
+    const soaSet = new Set();
+    for (let i = 0; i < GRID_N_SOAS; i++) {
+      const ms     = SOA_MIN_MS + i * (soaMaxMs - SOA_MIN_MS) / (GRID_N_SOAS - 1);
+      const frames = Math.round(ms / mspf);
+      soaSet.add(Math.round(frames * mspf));
+    }
+    const soas = [...soaSet];
+
+    // Build full trial list: soa × contrast × reps
+    const list = [];
+    soas.forEach(soa => {
+      GRID_CONTRASTS.forEach(contrast => {
+        for (let r = 0; r < repsPerCell; r++) {
+          list.push({ soa_ms: soa, contrast_pct: contrast });
+        }
+      });
+    });
+
+    // Fisher-Yates shuffle
+    for (let i = list.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [list[i], list[j]] = [list[j], list[i]];
+    }
+    return { soas, list };
+  }
+
+  // Per-SOA threshold: interpolate the contrast where p_detect crosses 0.75.
+  // Uses the empirical detection rates at each contrast level.
+  function estimateThreshold(detections) {
+    // detections: { contrast_pct → { hits, total } }
+    const pts = Object.entries(detections)
+      .map(([c, d]) => ({ c: parseFloat(c), p: d.total > 0 ? d.hits / d.total : null }))
+      .filter(pt => pt.p !== null)
+      .sort((a, b) => a.c - b.c);
+
+    if (pts.length < 2) return null;
+
+    // Find first crossing of p=0.75 from below
+    for (let i = 0; i < pts.length - 1; i++) {
+      if (pts[i].p <= 0.75 && pts[i+1].p >= 0.75) {
+        // Linear interpolation
+        const t = (0.75 - pts[i].p) / (pts[i+1].p - pts[i].p);
+        return pts[i].c + t * (pts[i+1].c - pts[i].c);
+      }
+    }
+    // All below 0.75 → threshold above our max contrast
+    if (pts[pts.length-1].p < 0.75) return 95;
+    // All above 0.75 → threshold below our min contrast
+    if (pts[0].p >= 0.75) return 5;
+    return null;
+  }
+
+  return { buildTrialList, estimateThreshold, GRID_CONTRASTS };
+})();
+
+// ════════════════════════════════════════════════════════════════════
+//  OFFLINE CURVE FITTING — damped sine to threshold-vs-SOA
+//  threshold(SOA) = base + A * sin(2π*f*SOA/1000) * exp(-SOA/τ)
+//  Grid search over f, A, base, τ — minimise sum of squared residuals.
+// ════════════════════════════════════════════════════════════════════
+function fitDampedSine(soaThresholds) {
+  // soaThresholds: [{soa_ms, threshold_pct}], at least 3 points needed
+  const pts = soaThresholds.filter(p => p.threshold_pct !== null);
+  if (pts.length < 3) return null;
+
+  const fGrid    = [2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0];
+  const AGrid    = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+  const baseGrid = [3, 7, 12, 18, 24];
+  const tauGrid  = [150, 250, 350, 500, 700, 1000];
+
+  let bestSSR = Infinity, best = null;
+
+  fGrid.forEach(f => {
+    tauGrid.forEach(tau => {
+      AGrid.forEach(A => {
+        baseGrid.forEach(base => {
+          let ssr = 0;
+          pts.forEach(({ soa_ms, threshold_pct }) => {
+            const pred = base + A * Math.sin(2 * Math.PI * f * soa_ms / 1000)
+                               * Math.exp(-soa_ms / tau);
+            ssr += (pred - threshold_pct) ** 2;
+          });
+          if (ssr < bestSSR) {
+            bestSSR = ssr;
+            best = { f, A, base, tau, ssr, rmse: Math.sqrt(ssr / pts.length) };
+          }
+        });
+      });
+    });
+  });
+
+  if (!best) return null;
+
+  // Trough locations: nth trough at SOA = (4n-3)*1000/(4f)
+  best.troughs = [1, 2, 3].map(n => {
+    const soa_ms = Math.round((4*n - 3) * 1000 / (4 * best.f));
+    const thr    = best.base + best.A * Math.exp(-soa_ms / best.tau);
+    return { n, soa_ms, threshold_pct: Math.round(Math.max(best.base, thr)) };
+  });
+
+  return best;
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  SETTINGS
+// ════════════════════════════════════════════════════════════════════
+let CFG = {
+  framesPerItem: 9,   // 75ms at 120Hz
+  t1FontPx:      96,
+  soaMaxMs:      800,
+  repsPerCell:   4,
+  maskEnabled:   false,
+};
+let FRAMES_PER_ITEM = CFG.framesPerItem;
+let STIM_FRAMES     = CFG.framesPerItem;
+let T1_FONT_FACE    = `bold ${CFG.t1FontPx}px Arial, Helvetica, sans-serif`;
+
+function getEl(id) { return document.getElementById(id); }
+function setLbl(id, val) { const e = getEl(id); if (e) e.textContent = val; }
+
+function updateSettings() {
+  const speed = getEl('sl-speed');
+  if (speed) {
+    CFG.framesPerItem = parseInt(speed.value);
+    setLbl('lbl-speed', Math.round(CFG.framesPerItem * (1000 / (measuredFPS || 60))) + 'ms/item');
+  }
+  const font = getEl('sl-t1font');
+  if (font) { CFG.t1FontPx = parseInt(font.value); setLbl('lbl-t1font', CFG.t1FontPx + 'px'); }
+  const soa = getEl('sl-soamax');
+  if (soa) { CFG.soaMaxMs = parseInt(soa.value); setLbl('lbl-soamax', CFG.soaMaxMs + 'ms'); }
+  const reps = getEl('sl-reps');
+  if (reps) {
+    CFG.repsPerCell = parseInt(reps.value);
+    const nCells = GRID_N_SOAS * GRID_CONTRASTS.length;
+    setLbl('lbl-reps', CFG.repsPerCell + 'x  (' + (CFG.repsPerCell * nCells) + ' trials)');
+  }
+  const mask = getEl('chk-mask');
+  if (mask) { CFG.maskEnabled = mask.checked; }
+}
+function initSettings() { updateSettings(); }
+
+// ════════════════════════════════════════════════════════════════════
+//  STREAM CONSTANTS
+// ════════════════════════════════════════════════════════════════════
+const BG_COLOR   = 'rgb(128,128,128)';
+const DIST_COLOR = '#222222';
+const T1_COLOR   = '#d8d8d8';
+const FIX_COLOR  = '#1a1a1a';
+const DIST_FONT  = 'bold 108px Arial, Helvetica, sans-serif';
+
+const T1_POOL    = ['1','2','3','4'];
+const T2_POOL    = ['6','7','8','9'];
+const LETTER_POOL= ['K','V','Y','Z','N','W','M','H','I','T','F','E','L','J','P','R','U','C'];
+
+const RUNOUT_ITEMS  = 6;
+const PRE_T1_MIN    = 5;
+const PRE_T1_MAX    = 9;
+
+// ── Line mask ─────────────────────────────────────────────────────────
+function drawLineMask(ctx2, cx, cy, radius=55) {
+  ctx2.save();
+  for (let i = 0; i < 8; i++) {
+    const angle  = (i / 8) * Math.PI * 2;
+    const length = 18 + Math.random() * 22;
+    const x1 = cx + Math.cos(angle) * (radius - length);
+    const y1 = cy + Math.sin(angle) * (radius - length);
+    const x2 = cx + Math.cos(angle) * radius;
+    const y2 = cy + Math.sin(angle) * radius;
+    ctx2.strokeStyle = 'rgba(200,200,200,0.55)';
+    ctx2.lineWidth   = 1.5;
+    ctx2.beginPath(); ctx2.moveTo(x1, y1); ctx2.lineTo(x2, y2); ctx2.stroke();
+  }
+  ctx2.restore();
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  SESSION STATE
+// ════════════════════════════════════════════════════════════════════
+let canvas, ctx, animFrame;
+let sessionActive  = false;
+let trials         = [];   // [{soa_ms, contrast_pct, t1Char, t2Char, detected, t1RT, t2RT, t1Tapped, valid}]
+let currentTrial   = 0;
+let TOTAL_TRIALS   = 0;
+let msPerFrame     = 1000 / 120;
+
+// Per-trial stream state
+let phase          = 'idle';
+let phaseFrame     = 0;
+let currentItem    = null;
+let maskFrame      = false;
+let t1Onset        = 0;
+let t2Onset        = 0;
+let t1Tapped       = false;
+let t2Tapped       = false;
+let t1RT           = null;
+let t2RT           = null;
+let t1WinOpen      = false;
+let t2WinOpen      = false;
+let t1WinTimeout   = null;
+let t2WinTimeout   = null;
+let currentSOA_ms  = 0;
+let currentT2Color = '#808080';
+let lagItems       = 0;
+let lagItemsDone   = 0;
+let runoutDone     = 0;
+let preItemsDone   = 0;
+let preItemsTarget = 0;
+
+// Running T1 RT stats
+let t1RTs      = [];
+let medianT1RT = 300;
+
+// ── Contrast → hex colour ─────────────────────────────────────────────
+function contrastToHex(pct) {
+  // 100% = black (#000000), 0% = bg gray (#808080)
+  const lum = Math.round(128 - (pct / 100) * 128);
+  const h   = Math.max(0, Math.min(255, lum)).toString(16).padStart(2, '0');
+  return '#' + h + h + h;
+}
+
+// ── Countdown ─────────────────────────────────────────────────────────
+function countdown(n, cb) {
+  if (n <= 0) { cb(); return; }
+  if (!ctx) { cb(); return; }
+  drawBg();
+  const W = canvas.width / devicePixelRatio, H = canvas.height / devicePixelRatio;
+  ctx.fillStyle = T1_COLOR; ctx.font = 'bold 72px Arial';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(n, W/2, H/2);
+  setTimeout(() => countdown(n - 1, cb), 900);
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  TAP HANDLER
+// ════════════════════════════════════════════════════════════════════
+function handleTap() {
+  if (!sessionActive) return;
+  const now = performance.now();
+  const ind = document.getElementById('tap-indicator');
+  if (ind) { ind.classList.add('tapped'); setTimeout(() => ind.classList.remove('tapped'), 120); }
+  playBeep();
+
+  if (t1WinOpen && !t1Tapped) {
+    t1Tapped = true;
+    t1RT     = now - t1Onset;
+    t1WinOpen = false;
+    clearTimeout(t1WinTimeout);
+    document.getElementById('hud-t1rt').textContent = Math.round(t1RT) + 'ms';
+    return;
+  }
+  if (t2WinOpen && !t2Tapped) {
+    t2Tapped = true;
+    t2RT     = now - t2Onset;
+    t2WinOpen = false;
+    clearTimeout(t2WinTimeout);
+  }
+}
+
+function openT1Window() {
+  t1WinOpen = true;
+  clearTimeout(t1WinTimeout);
+  t1WinTimeout = setTimeout(() => { t1WinOpen = false; }, 1200);
+}
+
+function openT2Window() {
+  t2WinOpen = true;
+  clearTimeout(t2WinTimeout);
+  t2WinTimeout = setTimeout(() => { t2WinOpen = false; }, 1200);
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  SESSION
+// ════════════════════════════════════════════════════════════════════
+function startSession() {
+  // Apply settings
+  FRAMES_PER_ITEM = CFG.framesPerItem;
+  STIM_FRAMES     = CFG.framesPerItem;
+  T1_FONT_FACE    = `bold ${CFG.t1FontPx}px Arial, Helvetica, sans-serif`;
+
+  trials = []; currentTrial = 0;
+  t1RTs  = []; medianT1RT = 300;
+
+  // Show task screen first so canvas context is available
+  showScreen('task-screen');
+
+  canvas = document.getElementById('task-canvas');
+  ctx    = canvas.getContext('2d');
+  if (!ctx) return;
+
+  function resizeCanvas() {
+    canvas.width  = window.innerWidth  * devicePixelRatio;
+    canvas.height = window.innerHeight * devicePixelRatio;
+    canvas.style.width  = window.innerWidth  + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  msPerFrame = 1000 / (measuredFPS || 120);
+
+  // Build structured grid trial list
+  const { soas, list } = GRID.buildTrialList(CFG.soaMaxMs, CFG.repsPerCell, msPerFrame);
+
+  list.forEach(({ soa_ms, contrast_pct }) => {
+    trials.push({
+      soa_ms, contrast_pct,
+      t1Char:   T1_POOL[Math.floor(Math.random() * T1_POOL.length)],
+      t2Char:   T2_POOL[Math.floor(Math.random() * T2_POOL.length)],
+      detected: null, t1RT: null, t2RT: null,
+      t1Tapped: false, valid: null
+    });
+  });
+
+  TOTAL_TRIALS = trials.length;
+
+  document.getElementById('tap-overlay').style.display = 'block';
+  countdown(3, () => { sessionActive = true; startTrial(); });
+}
+
+function abortSession() {
+  sessionActive = false;
+  if (animFrame) cancelAnimationFrame(animFrame);
+  clearTimeout(t1WinTimeout);
+  clearTimeout(t2WinTimeout);
+  document.getElementById('tap-overlay').style.display = 'none';
+  showScreen('home-screen');
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  TRIAL ENGINE — stream state machine
+//  Phases: pre → t1 → mask_t1 → lag → t2 → mask_t2 → runout
+// ════════════════════════════════════════════════════════════════════
+function startTrial() {
+  if (!sessionActive || currentTrial >= TOTAL_TRIALS) { endSession(); return; }
+
+  const trial = trials[currentTrial];
+  currentSOA_ms  = trial.soa_ms;
+
+  lagItems = Math.max(0, Math.floor(
+    (Math.round(currentSOA_ms / msPerFrame) - FRAMES_PER_ITEM) / FRAMES_PER_ITEM
+  ));
+
+  lagItemsDone   = 0;
+  runoutDone     = 0;
+  preItemsDone   = 0;
+  preItemsTarget = PRE_T1_MIN + Math.floor(Math.random() * (PRE_T1_MAX - PRE_T1_MIN + 1));
+  t1Tapped       = false;
+  t2Tapped       = false;
+  t1RT           = null;
+  t2RT           = null;
+  t1WinOpen      = false;
+  t2WinOpen      = false;
+  maskFrame      = false;
+  phase          = 'pre';
+  phaseFrame     = 0;
+
+  currentT2Color = contrastToHex(trial.contrast_pct);
+  document.getElementById('tap-indicator').classList.remove('tapped');
+  document.getElementById('hud-contrast').textContent = trial.contrast_pct.toFixed(0) + '%';
+
+  currentItem = { char: pickLetter(), color: DIST_COLOR, role: 'dist' };
+  if (animFrame) cancelAnimationFrame(animFrame);
+  animFrame = requestAnimationFrame(streamLoop);
+}
+
+function pickLetter() {
+  return LETTER_POOL[Math.floor(Math.random() * LETTER_POOL.length)];
+}
+
+// ── Stream loop ────────────────────────────────────────────────────
+function streamLoop() {
+  if (!sessionActive) return;
+  if (!ctx) return;
+  phaseFrame++;
+
+  switch (phase) {
+
+    case 'pre':
+      drawItemFrame();
+      if (phaseFrame >= FRAMES_PER_ITEM) {
+        phaseFrame = 0; preItemsDone++;
+        if (preItemsDone >= preItemsTarget) {
+          phase = 't1';
+          currentItem = { char: trials[currentTrial].t1Char, color: T1_COLOR,
+                          role: 't1', font: T1_FONT_FACE };
+        } else {
+          currentItem = { char: pickLetter(), color: DIST_COLOR, role: 'dist' };
+        }
+      }
+      break;
+
+    case 't1':
+      drawItemFrame();
+      if (phaseFrame === 1) { t1Onset = performance.now(); openT1Window(); }
+      if (phaseFrame >= FRAMES_PER_ITEM) {
+        phase = 'mask_t1'; phaseFrame = 0; maskFrame = true;
+      }
+      break;
+
+    case 'mask_t1': {
+      drawBg();
+      if (CFG.maskEnabled) {
+        const W = canvas.width / devicePixelRatio, H = canvas.height / devicePixelRatio;
+        drawLineMask(ctx, W/2, H/2);
+      }
+      maskFrame = false;
+      phase = lagItems > 0 ? 'lag' : 't2';
+      phaseFrame = 0;
+      currentItem = { char: pickLetter(), color: DIST_COLOR, role: 'dist' };
+      break;
+    }
+
+    case 'lag':
+      drawItemFrame();
+      if (phaseFrame >= FRAMES_PER_ITEM) {
+        phaseFrame = 0; lagItemsDone++;
+        if (lagItemsDone >= lagItems) {
+          phase = 't2'; phaseFrame = 0;
+          currentItem = { char: trials[currentTrial].t2Char,
+                          color: currentT2Color, role: 't2', font: DIST_FONT };
+        } else {
+          currentItem = { char: pickLetter(), color: DIST_COLOR, role: 'dist' };
+        }
+      }
+      break;
+
+    case 't2':
+      drawItemFrame();
+      if (phaseFrame === 1) { t2Onset = performance.now(); openT2Window(); }
+      if (phaseFrame >= FRAMES_PER_ITEM) {
+        phase = 'mask_t2'; phaseFrame = 0; maskFrame = true;
+      }
+      break;
+
+    case 'mask_t2': {
+      drawBg();
+      if (CFG.maskEnabled) {
+        const W = canvas.width / devicePixelRatio, H = canvas.height / devicePixelRatio;
+        drawLineMask(ctx, W/2, H/2);
+      }
+      maskFrame = false;
+      phase = 'runout'; phaseFrame = 0;
+      currentItem = { char: pickLetter(), color: DIST_COLOR, role: 'dist' };
+      break;
+    }
+
+    case 'runout':
+      drawItemFrame();
+      if (phaseFrame >= FRAMES_PER_ITEM) {
+        phaseFrame = 0; runoutDone++;
+        if (runoutDone >= RUNOUT_ITEMS) {
+          t1WinOpen = false; t2WinOpen = false;
+          if (!t1Tapped) { discardTrial(); return; }
+          finishTrial();
+          return;
+        } else {
+          currentItem = { char: pickLetter(), color: DIST_COLOR, role: 'dist' };
+        }
+      }
+      break;
+  }
+
+  animFrame = requestAnimationFrame(streamLoop);
+}
+
+function drawBg() {
+  if (!ctx) return;
+  const W = canvas.width / devicePixelRatio, H = canvas.height / devicePixelRatio;
+  ctx.fillStyle = BG_COLOR;
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = FIX_COLOR; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(W/2-10, H/2); ctx.lineTo(W/2+10, H/2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W/2, H/2-10); ctx.lineTo(W/2, H/2+10); ctx.stroke();
+}
+
+function drawItemFrame() {
+  drawBg();
+  if (currentItem && phaseFrame <= STIM_FRAMES) drawItem(currentItem);
+}
+
+function drawItem(item) {
+  const W = canvas.width / devicePixelRatio, H = canvas.height / devicePixelRatio;
+  ctx.font = item.font || DIST_FONT;
+  ctx.fillStyle = item.color;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(item.char, W/2, H/2);
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  TRIAL COMPLETION
+// ════════════════════════════════════════════════════════════════════
+function discardTrial() {
+  if (animFrame) cancelAnimationFrame(animFrame);
+  trials[currentTrial].valid    = false;
+  trials[currentTrial].detected = null;
+  currentTrial++;
+  updateHUD();
+  drawBg();
+  if (currentTrial >= TOTAL_TRIALS) { endSession(); return; }
+  setTimeout(startTrial, 300);
+}
+
+function finishTrial() {
+  if (animFrame) cancelAnimationFrame(animFrame);
+  if (!sessionActive) return;
+
+  const trial    = trials[currentTrial];
+  trial.detected = t2Tapped;
+  trial.t1Tapped = t1Tapped;
+  trial.t1RT     = t1RT;
+  trial.t2RT     = t2RT;
+  trial.valid    = true;
+
+  // Update running T1 RT median
+  if (t1RT !== null) {
+    t1RTs.push(t1RT);
+    t1RTs.sort((a, b) => a - b);
+    medianT1RT = t1RTs[Math.floor(t1RTs.length / 2)];
+  }
+
+  currentTrial++;
+  updateHUD();
+  drawBg();
+  if (currentTrial >= TOTAL_TRIALS) { endSession(); return; }
+  setTimeout(startTrial, 200 + Math.random() * 150);
+}
+
+function updateHUD() {
+  document.getElementById('hud-trial').textContent = `${currentTrial} / ${TOTAL_TRIALS}`;
+  const pct = TOTAL_TRIALS > 0 ? (currentTrial / TOTAL_TRIALS * 100).toFixed(0) : 0;
+  document.getElementById('hud-prog').style.width = pct + '%';
+  if (medianT1RT) {
+    document.getElementById('hud-t1rt').textContent = Math.round(medianT1RT) + 'ms';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  AUDIO
+// ════════════════════════════════════════════════════════════════════
+let audioCtx = null;
+function playBeep() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type = 'sine'; osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+    osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime + 0.08);
+  } catch(e) {}
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  END SESSION & RESULTS
+// ════════════════════════════════════════════════════════════════════
+function endSession() {
+  sessionActive = false;
+  if (animFrame) cancelAnimationFrame(animFrame);
+  window.removeEventListener('resize', () => {});
+  document.getElementById('tap-overlay').style.display = 'none';
+
+  const validTrials = trials.filter(t => t.valid);
+  const discarded   = trials.filter(t => t.valid === false).length;
+
+  // ── Compute per-SOA detection rates across contrast levels ───────
+  // detMap: { soa_ms → { contrast_pct → { hits, total } } }
+  const detMap = {};
+  validTrials.forEach(t => {
+    if (!detMap[t.soa_ms]) detMap[t.soa_ms] = {};
+    if (!detMap[t.soa_ms][t.contrast_pct]) detMap[t.soa_ms][t.contrast_pct] = { hits: 0, total: 0 };
+    detMap[t.soa_ms][t.contrast_pct].total++;
+    if (t.detected) detMap[t.soa_ms][t.contrast_pct].hits++;
+  });
+
+  // ── Estimate threshold per SOA ────────────────────────────────────
+  const soaThresholds = Object.keys(detMap).map(Number).sort((a,b)=>a-b).map(soa => ({
+    soa_ms: soa,
+    threshold_pct: GRID.estimateThreshold(detMap[soa])
+  }));
+
+  // ── Fit damped sine offline ───────────────────────────────────────
+  const fit = fitDampedSine(soaThresholds);
+
+  // ── Populate results screen ───────────────────────────────────────
+  if (fit) {
+    document.getElementById('res-hz').textContent  = fit.f.toFixed(1);
+    document.getElementById('res-unit').textContent= `Hz  ·  τ=${fit.tau}ms  ·  RMSE=${fit.rmse.toFixed(1)}%`;
+    document.getElementById('res-t1').textContent  = fit.troughs[0] ? `${fit.troughs[0].threshold_pct}% @ ${fit.troughs[0].soa_ms}ms` : '—';
+    document.getElementById('res-t2').textContent  = fit.troughs[1] ? `${fit.troughs[1].threshold_pct}% @ ${fit.troughs[1].soa_ms}ms` : '—';
+    document.getElementById('res-baseline').textContent = fit.base.toFixed(1) + '%';
+    document.getElementById('res-amp').textContent      = fit.A.toFixed(1) + '%';
+    const fitQ = fit.rmse < 5 ? 'Good' : fit.rmse < 10 ? 'Moderate' : 'Poor';
+    const fitC = fit.rmse < 5 ? 'var(--success)' : fit.rmse < 10 ? 'var(--warning)' : 'var(--danger)';
+    document.getElementById('conf-label').textContent   = `${fitQ} · RMSE ${fit.rmse.toFixed(1)}%`;
+    document.getElementById('conf-label').style.color   = fitC;
+  } else {
+    ['res-hz','res-t1','res-t2','res-baseline','res-amp'].forEach(id =>
+      document.getElementById(id).textContent = '—');
+    document.getElementById('conf-label').textContent = 'Too few points';
+  }
+
+  const t1RTMean = t1RTs.length ? Math.round(t1RTs.reduce((a,b)=>a+b,0) / t1RTs.length) : '—';
+
+  const interpText = fit
+    ? `<strong>${fit.f.toFixed(1)} Hz</strong> theta · τ=${fit.tau}ms decay · A=${fit.A.toFixed(1)}% amplitude.<br>` +
+      `Trough 1: <strong>${fit.troughs[0].threshold_pct}%</strong> threshold @ ${fit.troughs[0].soa_ms}ms · ` +
+      `Trough 2: <strong>${fit.troughs[1].threshold_pct}%</strong> @ ${fit.troughs[1].soa_ms}ms · ` +
+      `Trough 3: <strong>${fit.troughs[2].threshold_pct}%</strong> @ ${fit.troughs[2].soa_ms}ms.<br>` +
+      `Baseline: ${fit.base.toFixed(1)}%. Fit RMSE: ${fit.rmse.toFixed(1)}% contrast.<br><br>` +
+      `Valid: <strong>${validTrials.length}</strong>/${TOTAL_TRIALS} (${discarded} discarded). Mean T1 RT: <strong>${t1RTMean}ms</strong>.`
+    : `Insufficient data for curve fit. Valid: ${validTrials.length}/${TOTAL_TRIALS}. Mean T1 RT: ${t1RTMean}ms.`;
+
+  document.getElementById('blink-interp').innerHTML = interpText;
+
+  drawDetectionChart(detMap);
+  drawThresholdChart(soaThresholds, fit);
+
+  saveResult(fit, validTrials.length);
+  showScreen('results-screen');
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  CHARTS
+// ════════════════════════════════════════════════════════════════════
+
+// Chart 1: Detection rate heatmap — SOA on X, contrast on Y, colour = p(detect)
+function drawDetectionChart(detMap) {
+  const el   = document.getElementById('det-chart');
+  const ctx2 = el.getContext('2d');
+  const W    = el.parentElement.offsetWidth - 2;
+  const H    = 180;
+  el.width = W * devicePixelRatio; el.height = H * devicePixelRatio;
+  el.style.width = W + 'px'; el.style.height = H + 'px';
+  ctx2.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  ctx2.clearRect(0, 0, W, H);
+
+  const pad  = { l: 40, r: 12, t: 12, b: 30 };
+  const cW   = W - pad.l - pad.r;
+  const cH   = H - pad.t - pad.b;
+  const soas = Object.keys(detMap).map(Number).sort((a,b)=>a-b);
+  const conts= GRID_CONTRASTS;
+
+  if (soas.length < 2) return;
+
+  const soaMin = soas[0], soaMax = soas[soas.length-1];
+  const xS = soa => pad.l + (soa - soaMin) / (soaMax - soaMin) * cW;
+  const yC = c   => pad.t + (1 - (c - conts[0]) / (conts[conts.length-1] - conts[0])) * cH;
+
+  const cellW = cW / (soas.length - 1) * 0.7;
+  const cellH = cH / (conts.length - 1) * 0.7;
+
+  // Draw cells
+  soas.forEach(soa => {
+    conts.forEach(c => {
+      const cell = detMap[soa]?.[c];
+      const p    = cell && cell.total > 0 ? cell.hits / cell.total : null;
+      if (p === null) return;
+      // Colour: 0%=red, 50%=amber, 100%=cyan
+      const r = p < 0.5 ? 255 : Math.round(255 * (1 - (p - 0.5) * 2));
+      const g = p < 0.5 ? Math.round(255 * p * 2) : 229;
+      const b = p < 0.5 ? 0 : Math.round(255 * (p - 0.5) * 2);
+      ctx2.fillStyle = `rgba(${r},${g},${b},0.75)`;
+      ctx2.fillRect(xS(soa) - cellW/2, yC(c) - cellH/2, cellW, cellH);
+      // Label with detection %
+      ctx2.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx2.font = '7px Space Mono'; ctx2.textAlign = 'center';
+      ctx2.fillText(Math.round(p * 100) + '%', xS(soa), yC(c) + 2.5);
+    });
+  });
+
+  // Y axis (contrast)
+  conts.forEach(c => {
+    ctx2.fillStyle = 'rgba(90,90,122,0.65)'; ctx2.font = '7px Space Mono'; ctx2.textAlign = 'right';
+    ctx2.fillText(c + '%', pad.l - 3, yC(c) + 2.5);
+  });
+
+  // X axis (SOA)
+  ctx2.fillStyle = 'rgba(90,90,122,0.6)'; ctx2.textAlign = 'center';
+  soas.filter((_, i) => i % 2 === 0).forEach(soa =>
+    ctx2.fillText(soa + 'ms', xS(soa), pad.t + cH + 18)
+  );
+}
+
+// Chart 2: Empirical thresholds + fitted damped sine
+function drawThresholdChart(soaThresholds, fit) {
+  const el   = document.getElementById('thr-chart');
+  const ctx2 = el.getContext('2d');
+  const W    = el.parentElement.offsetWidth - 2;
+  const H    = 170;
+  el.width = W * devicePixelRatio; el.height = H * devicePixelRatio;
+  el.style.width = W + 'px'; el.style.height = H + 'px';
+  ctx2.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  ctx2.clearRect(0, 0, W, H);
+
+  const pad  = { l: 36, r: 12, t: 12, b: 30 };
+  const cW   = W - pad.l - pad.r;
+  const cH   = H - pad.t - pad.b;
+
+  const soaMin = SOA_MIN_MS;
+  const soaMax = CFG.soaMaxMs;
+  const xS = soa => pad.l + (soa - soaMin) / (soaMax - soaMin) * cW;
+  const yP = pct => pad.t + cH * (1 - pct / 100);
+
+  // Grid lines
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + cH * (1 - i / 4);
+    ctx2.strokeStyle = 'rgba(28,28,46,1)'; ctx2.lineWidth = 1;
+    ctx2.beginPath(); ctx2.moveTo(pad.l, y); ctx2.lineTo(pad.l + cW, y); ctx2.stroke();
+    ctx2.fillStyle = 'rgba(90,90,122,0.65)'; ctx2.font = '8px Space Mono'; ctx2.textAlign = 'right';
+    ctx2.fillText((i * 25) + '%', pad.l - 3, y + 3);
+  }
+
+  // Fitted curve
+  if (fit) {
+    ctx2.strokeStyle = 'rgba(0,229,255,0.8)'; ctx2.lineWidth = 2; ctx2.setLineDash([]);
+    ctx2.beginPath(); let first = true;
+    for (let s = soaMin; s <= soaMax; s += 4) {
+      const thr = fit.base + fit.A * Math.sin(2 * Math.PI * fit.f * s / 1000) * Math.exp(-s / fit.tau);
+      const x   = xS(s), y = yP(Math.max(0, Math.min(100, thr)));
+      first ? ctx2.moveTo(x, y) : ctx2.lineTo(x, y); first = false;
+    }
+    ctx2.stroke();
+
+    // Baseline
+    ctx2.strokeStyle = 'rgba(57,255,138,0.38)'; ctx2.lineWidth = 1; ctx2.setLineDash([2, 4]);
+    ctx2.beginPath(); ctx2.moveTo(pad.l, yP(fit.base)); ctx2.lineTo(pad.l + cW, yP(fit.base)); ctx2.stroke();
+    ctx2.setLineDash([]);
+
+    // Trough markers
+    fit.troughs.forEach((t, i) => {
+      if (t.soa_ms < soaMin || t.soa_ms > soaMax) return;
+      const cols = ['rgba(255,157,0,0.7)', 'rgba(255,60,90,0.6)', 'rgba(180,60,255,0.5)'];
+      ctx2.strokeStyle = cols[i]; ctx2.lineWidth = 1; ctx2.setLineDash([3, 3]);
+      ctx2.beginPath(); ctx2.moveTo(xS(t.soa_ms), pad.t); ctx2.lineTo(xS(t.soa_ms), pad.t + cH); ctx2.stroke();
+      ctx2.setLineDash([]);
+      ctx2.fillStyle = cols[i]; ctx2.font = 'bold 8px Space Mono'; ctx2.textAlign = 'center';
+      ctx2.fillText('T' + (i+1), xS(t.soa_ms), pad.t + 8);
+    });
+  }
+
+  // Empirical threshold dots
+  soaThresholds.forEach(({ soa_ms, threshold_pct }) => {
+    if (threshold_pct === null) return;
+    const x = xS(soa_ms), y = yP(threshold_pct);
+    ctx2.fillStyle = 'rgba(0,229,255,0.15)'; ctx2.beginPath(); ctx2.arc(x, y, 5, 0, Math.PI*2); ctx2.fill();
+    ctx2.strokeStyle = '#00e5ff'; ctx2.lineWidth = 1.5; ctx2.beginPath(); ctx2.arc(x, y, 5, 0, Math.PI*2); ctx2.stroke();
+  });
+
+  // X axis
+  ctx2.fillStyle = 'rgba(90,90,122,0.6)'; ctx2.font = '8px Space Mono'; ctx2.textAlign = 'center';
+  const xTicks = [200, 300, 400, 500, 600, 700, 800, 1000, 1200].filter(s => s >= soaMin && s <= soaMax);
+  xTicks.forEach(s => ctx2.fillText(s + 'ms', xS(s), pad.t + cH + 18));
+
+  // Legend
+  ctx2.fillStyle = 'rgba(0,229,255,0.7)'; ctx2.textAlign = 'right';
+  ctx2.fillText('— fit', pad.l + cW, pad.t + 10);
+  ctx2.fillStyle = 'rgba(0,229,255,0.5)';
+  ctx2.fillText('● empirical', pad.l + cW, pad.t + 21);
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  CSV EXPORT
+// ════════════════════════════════════════════════════════════════════
+function downloadCSV() {
+  let csv = 'Trial,SOA_ms,T2_Contrast_pct,T1_Char,T2_Char,T1_Tapped,T1_RT_ms,T2_Detected,T2_RT_ms,Valid\n';
+  trials.forEach((t, i) => {
+    if (t.detected === null && t.valid !== false) return;
+    csv += `${i+1},${t.soa_ms},${t.contrast_pct.toFixed(1)},` +
+           `${t.t1Char??''},${t.t2Char??''},` +
+           `${t.t1Tapped ? 1 : 0},${t.t1RT !== null ? Math.round(t.t1RT) : ''},` +
+           `${t.detected ? 1 : 0},${t.t2RT !== null ? Math.round(t.t2RT) : ''},` +
+           `${t.valid ? 1 : 0}\n`;
+  });
+
+  // Per-SOA threshold summary
+  const validTrials = trials.filter(t => t.valid);
+  const detMap = {};
+  validTrials.forEach(t => {
+    if (!detMap[t.soa_ms]) detMap[t.soa_ms] = {};
+    if (!detMap[t.soa_ms][t.contrast_pct]) detMap[t.soa_ms][t.contrast_pct] = { hits: 0, total: 0 };
+    detMap[t.soa_ms][t.contrast_pct].total++;
+    if (t.detected) detMap[t.soa_ms][t.contrast_pct].hits++;
+  });
+  const soaThresholds = Object.keys(detMap).map(Number).sort((a,b)=>a-b).map(soa => ({
+    soa_ms: soa, threshold_pct: GRID.estimateThreshold(detMap[soa])
+  }));
+  const fit = fitDampedSine(soaThresholds);
+
+  csv += '\nSummary\n';
+  csv += `Paradigm,θ WAVE v3.0 — Structured Grid\n`;
+  csv += `Model,Offline damped sine fit\n`;
+
+  csv += '\nSettings\n';
+  csv += `FPS_measured,${measuredFPS}\n`;
+  csv += `Frames_per_item,${CFG.framesPerItem}\n`;
+  csv += `Item_duration_ms,${Math.round(CFG.framesPerItem * (1000 / measuredFPS))}\n`;
+  csv += `SOA_min_ms,${SOA_MIN_MS}\n`;
+  csv += `SOA_max_ms,${CFG.soaMaxMs}\n`;
+  csv += `Reps_per_cell,${CFG.repsPerCell}\n`;
+  csv += `Grid_n_soas,${GRID_N_SOAS}\n`;
+  csv += `Grid_contrasts,${GRID_CONTRASTS.join('|')}\n`;
+  csv += `Total_trials,${TOTAL_TRIALS}\n`;
+  csv += `Mask_enabled,${CFG.maskEnabled}\n`;
+  csv += `Date,${new Date().toLocaleDateString()}\n`;
+  csv += `Time,${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}\n`;
+
+  csv += '\nThreshold_curve\n';
+  csv += 'SOA_ms,Threshold_pct\n';
+  soaThresholds.forEach(({ soa_ms, threshold_pct }) =>
+    csv += `${soa_ms},${threshold_pct !== null ? threshold_pct.toFixed(1) : ''}\n`
+  );
+
+  if (fit) {
+    csv += '\nFit\n';
+    csv += `Freq_Hz,${fit.f}\n`;
+    csv += `Tau_ms,${fit.tau}\n`;
+    csv += `Amplitude_pct,${fit.A}\n`;
+    csv += `Base_threshold_pct,${fit.base}\n`;
+    csv += `Fit_RMSE_pct,${fit.rmse.toFixed(2)}\n`;
+    fit.troughs.forEach((t, i) => {
+      csv += `Trough${i+1}_soa_ms,${t.soa_ms}\n`;
+      csv += `Trough${i+1}_threshold_pct,${t.threshold_pct}\n`;
+    });
+  }
+
+  csv += '\nSession\n';
+  csv += `Valid_trials,${validTrials.length}\n`;
+  csv += `Discarded_trials,${trials.filter(t => t.valid === false).length}\n`;
+  const t1RTMean = t1RTs.length ? Math.round(t1RTs.reduce((a,b)=>a+b,0) / t1RTs.length) : '';
+  csv += `Mean_T1_RT_ms,${t1RTMean}\n`;
+  csv += `Median_T1_RT_ms,${t1RTs.length ? Math.round(medianT1RT) : ''}\n`;
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `theta_v3_${Date.now()}.csv`; a.click();
+  URL.revokeObjectURL(url);
+  toast('CSV exported');
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  HISTORY
+// ════════════════════════════════════════════════════════════════════
+function saveResult(fit, nValid) {
+  const h = JSON.parse(localStorage.getItem('theta_history') || '[]');
+  h.unshift({
+    hz:       fit ? fit.f.toFixed(1) : '—',
+    tau:      fit ? fit.tau : '—',
+    amp:      fit ? fit.A.toFixed(1) : '—',
+    base:     fit ? fit.base.toFixed(1) : '—',
+    rmse:     fit ? fit.rmse.toFixed(1) : '—',
+    trough1:  fit ? fit.troughs[0] : null,
+    trough2:  fit ? fit.troughs[1] : null,
+    trials:   nValid,
+    paradigm: 'v3.0',
+    date: new Date().toLocaleDateString(),
+    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  });
+  if (h.length > 30) h.splice(30);
+  localStorage.setItem('theta_history', JSON.stringify(h));
+}
+
+function renderHistory() {
+  const list = document.getElementById('history-list');
+  const h    = JSON.parse(localStorage.getItem('theta_history') || '[]');
+  if (!h.length) {
+    list.innerHTML = '<div style="color:var(--muted);font-size:12px;text-align:center;padding:32px;">No sessions yet.</div>';
+    return;
+  }
+  list.innerHTML = h.map(s => `
+    <div class="history-entry">
+      <div>
+        <div class="history-hz">${s.hz} Hz${s.paradigm ? ' <span style="font-size:9px;color:var(--muted)">' + s.paradigm + '</span>' : ''}</div>
+        <div class="history-conf">
+          ${s.trough1 ? 'T1: ' + s.trough1.threshold_pct + '%@' + s.trough1.soa_ms + 'ms' : ''}
+          ${s.trough2 ? ' · T2: ' + s.trough2.threshold_pct + '%@' + s.trough2.soa_ms + 'ms' : ''}
+          ${s.amp ? ' · A=' + s.amp + '%' : ''}
+          ${s.rmse ? ' · RMSE=' + s.rmse + '%' : ''}
+        </div>
+      </div>
+      <div class="history-meta">${s.date}<br>${s.time}<br>${s.trials} trials</div>
+    </div>`).join('');
+}
+
+function clearHistory() {
+  if (confirm('Clear all session history?')) {
+    localStorage.removeItem('theta_history'); renderHistory();
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  TAP OVERLAY BINDING
+// ════════════════════════════════════════════════════════════════════
+(function() {
+  function bindTap() {
+    const el = document.getElementById('tap-overlay');
+    if (!el) return;
+    el.addEventListener('touchstart', function(e) {
+      e.preventDefault(); handleTap();
+    }, { passive: false });
+    el.addEventListener('pointerdown', function(e) {
+      if (e.pointerType === 'touch') return;
+      handleTap();
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindTap);
+  } else {
+    bindTap();
+  }
+})();
+
+// ── Boot ──────────────────────────────────────────────────────────────
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initSettings);
+} else {
+  initSettings();
+}
+</script>
+</body>
+</html>
