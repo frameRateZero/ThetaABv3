@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.json">
-<title>θ WAVE v3.1 — Attentional Blink Lab</title>
+<title>θ WAVE v3.2 — Attentional Blink Lab</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
@@ -169,7 +169,7 @@
 <div id="home-screen" class="screen">
   <div>
     <div class="logo-theta">θ</div>
-    <div class="logo-sub">Neural Theta Frequency Estimator · v3.1</div>
+    <div class="logo-sub">Neural Theta Frequency Estimator · v3.2</div>
   </div>
   <div class="badge-row">
     <span class="badge">Twitch Paradigm</span>
@@ -183,7 +183,7 @@
     <p>A digit flashes among letters — tap when you see it. Shortly after, another digit appears — tap if you see it. Your pattern of misses across SOA and contrast levels reveals the attentional blink threshold curve. A damped sine is fitted offline to estimate theta frequency.</p>
   </div>
   <div class="changelog">
-    <strong>v3.1:</strong> Contrast grid shifted up (20–100%) &middot; 7 SOAs concentrated in blink zone &middot; Default 6 reps per cell (252 trials) &middot; Pure black (100%) as contrast ceiling
+    <strong>v3.2:</strong> Two-phase session &middot; Phase 1 pins trough 1 + Hz estimate (200–620ms dense) &middot; Auto-advances on confidence &middot; Phase 2 targets predicted trough 2 window &middot; Manual advance button &middot; Live trough estimate on HUD
   </div>
 
   <div class="settings-panel">
@@ -290,12 +290,13 @@
   <canvas id="task-canvas"></canvas>
   <div class="task-hud">
     <div class="hud-item">
-      <div class="hud-label">Trial</div>
+      <div class="hud-label" id="hud-phase-label">Phase 1</div>
       <div class="hud-val" id="hud-trial">0</div>
     </div>
     <div class="hud-item" style="align-items:center;">
-      <div class="hud-label">Progress</div>
+      <div class="hud-label" id="hud-conf-label">Trough 1 conf</div>
       <div class="hud-prog-bar"><div class="hud-prog-fill" id="hud-prog"></div></div>
+      <div style="font-size:9px;color:var(--muted);margin-top:2px;" id="hud-trough-est">—</div>
     </div>
     <div class="hud-item" style="align-items:center;">
       <div class="hud-label">T1 RT</div>
@@ -306,6 +307,12 @@
       <div class="hud-val" id="hud-contrast">—</div>
     </div>
   </div>
+  <!-- Phase 2 advance button — only visible in phase 1 -->
+  <button id="btn-advance" class="btn-secondary"
+    style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+    z-index:30;padding:8px 20px;font-size:10px;opacity:0;pointer-events:none;
+    transition:opacity 0.4s;"
+    onclick="advancePhase()">Phase 1 done → Target Trough 2</button>
   <div id="tap-overlay"></div>
   <div id="tap-indicator"></div>
   <button class="btn-secondary" style="position:fixed;top:12px;right:12px;z-index:30;
@@ -436,70 +443,152 @@ function calibrate() {
 //  No adaptive selection — every cell pre-specified at session start.
 // ════════════════════════════════════════════════════════════════════
 const SOA_MIN_MS   = 200; // floor — below this is sensory masking, not AB
-const GRID_N_SOAS  = 7;   // 7 SOAs concentrated in blink zone
-const GRID_CONTRASTS = [20, 35, 55, 75, 90, 100]; // %, 6 levels — shifted up, 100=pure black
+
+// ── Phase 1: dense blink-zone coverage ───────────────────────────────
+// 8 fixed SOAs spanning 200–620ms at 60ms spacing.
+// Goal: pin trough 1, peak 1, and start of recovery.
+const PHASE1_SOAS_MS = [200, 260, 320, 380, 440, 500, 560, 620];
+
+// ── Phase 2: targeted trough-2 window ────────────────────────────────
+// Computed at phase transition from trough1 + Hz estimate.
+// 6 points centred on predicted trough 2 ± 90ms at 36ms spacing,
+// plus one anchor at peak 1 to confirm recovery level.
+// Built dynamically by buildPhase2Soas().
+
+const GRID_CONTRASTS = [20, 35, 55, 75, 90, 100]; // 6 levels, shifted up, 100=pure black
+
+// ── Trough-1 confidence ───────────────────────────────────────────────
+// Computed live after each trial from the rolling threshold-vs-SOA curve.
+// Returns 0–1. Fires phase transition when > CONF_THRESHOLD and
+// min reps per candidate trough SOA >= MIN_TROUGH_REPS.
+const CONF_THRESHOLD   = 0.75;  // 0–1 — how clear the trough minimum must be
+const MIN_TROUGH_REPS  = 4;     // min valid trials at candidate trough SOA across all contrasts
 
 const GRID = (() => {
-  // Threshold estimation: for each SOA, fit a logistic to
-  // (contrast, p_detect) and read off the 75% point.
-  const SIGMA_LOGISTIC = 10; // assumed slope (% contrast)
 
-  function buildTrialList(soaMaxMs, repsPerCell, mspf) {
-    // Build SOA list: GRID_N_SOAS values from SOA_MIN_MS to soaMaxMs,
-    // each quantised to nearest frame boundary.
-    const soaSet = new Set();
-    for (let i = 0; i < GRID_N_SOAS; i++) {
-      const ms     = SOA_MIN_MS + i * (soaMaxMs - SOA_MIN_MS) / (GRID_N_SOAS - 1);
-      const frames = Math.round(ms / mspf);
-      soaSet.add(Math.round(frames * mspf));
+  // ── Per-SOA threshold: 75% contrast crossing ─────────────────────
+  function estimateThreshold(detections) {
+    const pts = Object.entries(detections)
+      .map(([c, d]) => ({ c: parseFloat(c), p: d.total > 0 ? d.hits / d.total : null }))
+      .filter(pt => pt.p !== null)
+      .sort((a, b) => a.c - b.c);
+    if (pts.length < 2) return null;
+    for (let i = 0; i < pts.length - 1; i++) {
+      if (pts[i].p <= 0.75 && pts[i+1].p >= 0.75) {
+        const t = (0.75 - pts[i].p) / (pts[i+1].p - pts[i].p);
+        return pts[i].c + t * (pts[i+1].c - pts[i].c);
+      }
     }
-    const soas = [...soaSet];
+    if (pts[pts.length-1].p < 0.75) return 102; // above ceiling
+    if (pts[0].p >= 0.75)           return 5;   // below floor
+    return null;
+  }
 
-    // Build full trial list: soa × contrast × reps
+  // ── Build shuffled trial block from a SOA list ────────────────────
+  function buildBlock(soaList, repsPerCell) {
     const list = [];
-    soas.forEach(soa => {
+    soaList.forEach(soa => {
       GRID_CONTRASTS.forEach(contrast => {
         for (let r = 0; r < repsPerCell; r++) {
           list.push({ soa_ms: soa, contrast_pct: contrast });
         }
       });
     });
-
-    // Fisher-Yates shuffle
     for (let i = list.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [list[i], list[j]] = [list[j], list[i]];
     }
-    return { soas, list };
+    return list;
   }
 
-  // Per-SOA threshold: interpolate the contrast where p_detect crosses 0.75.
-  // Uses the empirical detection rates at each contrast level.
-  function estimateThreshold(detections) {
-    // detections: { contrast_pct → { hits, total } }
-    const pts = Object.entries(detections)
-      .map(([c, d]) => ({ c: parseFloat(c), p: d.total > 0 ? d.hits / d.total : null }))
-      .filter(pt => pt.p !== null)
-      .sort((a, b) => a.c - b.c);
+  // ── Phase 1 trial list ────────────────────────────────────────────
+  // SOAs quantised to frame boundaries.
+  function buildPhase1(repsPerCell, mspf) {
+    const soas = PHASE1_SOAS_MS.map(ms =>
+      Math.round(Math.round(ms / mspf) * mspf)
+    );
+    return { soas, list: buildBlock(soas, repsPerCell) };
+  }
 
-    if (pts.length < 2) return null;
-
-    // Find first crossing of p=0.75 from below
-    for (let i = 0; i < pts.length - 1; i++) {
-      if (pts[i].p <= 0.75 && pts[i+1].p >= 0.75) {
-        // Linear interpolation
-        const t = (0.75 - pts[i].p) / (pts[i+1].p - pts[i].p);
-        return pts[i].c + t * (pts[i+1].c - pts[i].c);
-      }
+  // ── Phase 2 SOA list from trough1 + Hz estimate ───────────────────
+  // Centres 6 points on predicted trough 2, plus peak1 anchor.
+  function buildPhase2(trough1Ms, hzEst, peak1Ms, repsPerCell, mspf) {
+    const period   = Math.round(1000 / hzEst);
+    const trough2  = trough1Ms + period;
+    const spacing  = 36; // ms between phase-2 SOA points
+    const halfSpan = spacing * 2.5; // ±90ms around trough2 prediction
+    const rawSoas  = [];
+    for (let d = -halfSpan; d <= halfSpan + 1; d += spacing) {
+      rawSoas.push(Math.round((trough2 + d) / mspf) * mspf);
     }
-    // All below 0.75 → threshold above our max contrast
-    if (pts[pts.length-1].p < 0.75) return 95;
-    // All above 0.75 → threshold below our min contrast
-    if (pts[0].p >= 0.75) return 5;
-    return null;
+    // Add peak1 anchor (confirms recovery is still there)
+    rawSoas.push(Math.round(peak1Ms / mspf) * mspf);
+    // Deduplicate and sort
+    const soas = [...new Set(rawSoas)].sort((a, b) => a - b);
+    return { soas, trough2Pred: trough2, list: buildBlock(soas, repsPerCell) };
   }
 
-  return { buildTrialList, estimateThreshold, GRID_CONTRASTS };
+  // ── Trough-1 confidence ───────────────────────────────────────────
+  // Uses the live detMap to compute the threshold curve and score how
+  // clearly one SOA is the minimum vs its neighbours.
+  // Returns { confidence: 0–1, trough1Ms, peak1Ms, hzEst }
+  function computeTrough1Confidence(detMap) {
+    const soas = Object.keys(detMap).map(Number).sort((a,b) => a-b);
+    if (soas.length < 4) return { confidence: 0, trough1Ms: null, peak1Ms: null, hzEst: null };
+
+    // Threshold at each SOA
+    const thrs = soas.map(s => ({ soa: s, thr: estimateThreshold(detMap[s]) }));
+
+    // Only use SOAs where we have enough reps (≥ MIN_TROUGH_REPS total valid trials)
+    const repCounts = soas.map(s => {
+      let n = 0;
+      Object.values(detMap[s]).forEach(cell => { n += cell.total; });
+      return n;
+    });
+
+    // Find minimum threshold SOA (= candidate trough 1) among well-sampled SOAs
+    let minThr = Infinity, minIdx = -1;
+    thrs.forEach(({ thr }, i) => {
+      if (thr !== null && repCounts[i] >= MIN_TROUGH_REPS && thr < minThr) {
+        minThr = thr; minIdx = i;
+      }
+    });
+    if (minIdx < 0) return { confidence: 0, trough1Ms: null, peak1Ms: null, hzEst: null };
+
+    // Find maximum detection rate SOA (= candidate peak 1) — the easiest SOA
+    let maxDet = -1, maxDetIdx = -1;
+    soas.forEach((s, i) => {
+      let hits = 0, total = 0;
+      Object.values(detMap[s]).forEach(cell => { hits += cell.hits; total += cell.total; });
+      const rate = total > 0 ? hits / total : 0;
+      if (rate > maxDet && i > minIdx) { maxDet = rate; maxDetIdx = i; }
+    });
+
+    // Confidence: how much lower is trough vs neighbours and vs peak
+    const neighbourThrs = [];
+    if (minIdx > 0 && thrs[minIdx-1].thr !== null) neighbourThrs.push(thrs[minIdx-1].thr);
+    if (minIdx < thrs.length-1 && thrs[minIdx+1].thr !== null) neighbourThrs.push(thrs[minIdx+1].thr);
+    if (neighbourThrs.length === 0) return { confidence: 0, trough1Ms: null, peak1Ms: null, hzEst: null };
+
+    const avgNeighbour = neighbourThrs.reduce((a,b)=>a+b,0) / neighbourThrs.length;
+    const depth        = avgNeighbour - minThr; // how much deeper than neighbours
+    // Normalise: depth of 30% contrast = full confidence
+    const depthConf    = Math.min(1, Math.max(0, depth / 30));
+
+    // Rep count confidence: rises from 0 at MIN_TROUGH_REPS to 1 at 3×
+    const repConf = Math.min(1, (repCounts[minIdx] - MIN_TROUGH_REPS) / (MIN_TROUGH_REPS * 2));
+
+    const confidence = depthConf * 0.7 + repConf * 0.3;
+
+    // Hz estimate from trough1→peak1 half-period (if peak found)
+    const trough1Ms = soas[minIdx];
+    const peak1Ms   = maxDetIdx >= 0 ? soas[maxDetIdx] : null;
+    const hzEst     = peak1Ms ? Math.round(500 / (peak1Ms - trough1Ms) * 10) / 10 : null;
+
+    return { confidence, trough1Ms, peak1Ms, hzEst };
+  }
+
+  return { buildPhase1, buildPhase2, estimateThreshold, computeTrough1Confidence, GRID_CONTRASTS };
 })();
 
 // ════════════════════════════════════════════════════════════════════
@@ -580,7 +669,7 @@ function updateSettings() {
   const reps = getEl('sl-reps');
   if (reps) {
     CFG.repsPerCell = parseInt(reps.value);
-    const nCells = GRID_N_SOAS * GRID_CONTRASTS.length;
+    const nCells = PHASE1_SOAS_MS.length * GRID_CONTRASTS.length;
     setLbl('lbl-reps', CFG.repsPerCell + 'x  (' + (CFG.repsPerCell * nCells) + ' trials)');
   }
   const mask = getEl('chk-mask');
@@ -659,6 +748,18 @@ let preItemsTarget = 0;
 let t1RTs      = [];
 let medianT1RT = 300;
 
+// ── Two-phase state ───────────────────────────────────────────────────
+let sessionPhase     = 1;          // 1 or 2
+let phase1Trials     = [];         // references to phase-1 trial objects
+let phase2Trials     = [];         // references to phase-2 trial objects
+let phase1Soas       = [];         // SOAs used in phase 1
+let phase2Soas       = [];         // SOAs used in phase 2
+let trough1Result    = null;       // { trough1Ms, peak1Ms, hzEst } from phase transition
+let phase2Trough2Pred= null;       // predicted trough 2 ms
+let detMap           = {};         // live { soa → { contrast → { hits, total } } }
+const PHASE1_MAX_TRIALS = 400;     // safety cap — phase 1 cannot exceed this
+const PHASE2_REPS    = 8;          // reps per cell in phase 2 (more focused = more reps)
+
 // ── Contrast → hex colour ─────────────────────────────────────────────
 function contrastToHex(pct) {
   // 100% = black (#000000), 0% = bg gray (#808080)
@@ -721,15 +822,20 @@ function openT2Window() {
 //  SESSION
 // ════════════════════════════════════════════════════════════════════
 function startSession() {
-  // Apply settings
   FRAMES_PER_ITEM = CFG.framesPerItem;
   STIM_FRAMES     = CFG.framesPerItem;
   T1_FONT_FACE    = `bold ${CFG.t1FontPx}px Arial, Helvetica, sans-serif`;
 
+  // Reset all state
   trials = []; currentTrial = 0;
   t1RTs  = []; medianT1RT = 300;
+  sessionPhase     = 1;
+  phase1Trials     = [];
+  phase2Trials     = [];
+  trough1Result    = null;
+  phase2Trough2Pred= null;
+  detMap           = {};
 
-  // Show task screen first so canvas context is available
   showScreen('task-screen');
 
   canvas = document.getElementById('task-canvas');
@@ -748,23 +854,64 @@ function startSession() {
 
   msPerFrame = 1000 / (measuredFPS || 120);
 
-  // Build structured grid trial list
-  const { soas, list } = GRID.buildTrialList(CFG.soaMaxMs, CFG.repsPerCell, msPerFrame);
+  // Phase 1: dense blink-zone coverage
+  const { soas, list } = GRID.buildPhase1(CFG.repsPerCell, msPerFrame);
+  phase1Soas = soas;
+  appendTrials(list, 1);
+  TOTAL_TRIALS = trials.length; // will grow when phase 2 appends
 
+  document.getElementById('tap-overlay').style.display = 'block';
+  updateHUD();
+  countdown(3, () => { sessionActive = true; startTrial(); });
+}
+
+// Append a trial block (phase 1 or 2) to the trials array
+function appendTrials(list, ph) {
   list.forEach(({ soa_ms, contrast_pct }) => {
-    trials.push({
+    const t = {
       soa_ms, contrast_pct,
       t1Char:   T1_POOL[Math.floor(Math.random() * T1_POOL.length)],
       t2Char:   T2_POOL[Math.floor(Math.random() * T2_POOL.length)],
       detected: null, t1RT: null, t2RT: null,
-      t1Tapped: false, valid: null
-    });
+      t1Tapped: false, valid: null, sessionPhase: ph
+    };
+    trials.push(t);
+    if (ph === 1) phase1Trials.push(t);
+    else          phase2Trials.push(t);
   });
-
   TOTAL_TRIALS = trials.length;
+}
 
-  document.getElementById('tap-overlay').style.display = 'block';
-  countdown(3, () => { sessionActive = true; startTrial(); });
+// Advance to phase 2 — called automatically on confidence or manually
+function advancePhase() {
+  if (sessionPhase !== 1) return;
+  sessionPhase = 2;
+
+  // Hide advance button
+  const btn = document.getElementById('btn-advance');
+  btn.style.opacity = '0'; btn.style.pointerEvents = 'none';
+
+  // Compute trough1 result from current data
+  const conf = GRID.computeTrough1Confidence(detMap);
+  trough1Result = conf;
+
+  const hz  = conf.hzEst  || 4.0;  // fallback to 4Hz if not estimable
+  const t1  = conf.trough1Ms || 320;
+  const p1  = conf.peak1Ms   || (t1 + Math.round(500/hz));
+
+  // Build phase 2 trial list
+  const { soas, trough2Pred, list } = GRID.buildPhase2(t1, hz, p1, PHASE2_REPS, msPerFrame);
+  phase2Soas        = soas;
+  phase2Trough2Pred = trough2Pred;
+  appendTrials(list, 2);
+
+  // Update HUD to show phase 2
+  document.getElementById('hud-phase-label').textContent  = 'Phase 2';
+  document.getElementById('hud-phase-label').style.color  = 'var(--success)';
+  document.getElementById('hud-conf-label').textContent   = 'Trough 2 target';
+  document.getElementById('hud-trough-est').textContent   =
+    `T1=${t1}ms · ${hz.toFixed(1)}Hz → T2≈${trough2Pred}ms`;
+  document.getElementById('hud-prog').style.background    = 'var(--success)';
 }
 
 function abortSession() {
@@ -968,6 +1115,39 @@ function finishTrial() {
     medianT1RT = t1RTs[Math.floor(t1RTs.length / 2)];
   }
 
+  // ── Update live detMap ────────────────────────────────────────────
+  const soa = trial.soa_ms, c = trial.contrast_pct;
+  if (!detMap[soa]) detMap[soa] = {};
+  if (!detMap[soa][c]) detMap[soa][c] = { hits: 0, total: 0 };
+  detMap[soa][c].total++;
+  if (trial.detected) detMap[soa][c].hits++;
+
+  // ── Phase 1 confidence check ──────────────────────────────────────
+  if (sessionPhase === 1) {
+    const conf = GRID.computeTrough1Confidence(detMap);
+    const confPct = Math.round(conf.confidence * 100);
+
+    // Update HUD
+    document.getElementById('hud-prog').style.width = confPct + '%';
+    if (conf.trough1Ms) {
+      const hzStr = conf.hzEst ? conf.hzEst.toFixed(1) + 'Hz' : '?Hz';
+      document.getElementById('hud-trough-est').textContent =
+        `T1≈${conf.trough1Ms}ms · ${hzStr}`;
+    }
+
+    // Show advance button once confidence is meaningful
+    const btn = document.getElementById('btn-advance');
+    if (conf.confidence > 0.4) {
+      btn.style.opacity = '0.85'; btn.style.pointerEvents = 'auto';
+    }
+
+    // Auto-advance on threshold
+    const phase1Count = trials.filter(t => t.sessionPhase === 1 && t.valid).length;
+    if (conf.confidence >= CONF_THRESHOLD || phase1Count >= PHASE1_MAX_TRIALS) {
+      advancePhase();
+    }
+  }
+
   currentTrial++;
   updateHUD();
   drawBg();
@@ -977,8 +1157,13 @@ function finishTrial() {
 
 function updateHUD() {
   document.getElementById('hud-trial').textContent = `${currentTrial} / ${TOTAL_TRIALS}`;
-  const pct = TOTAL_TRIALS > 0 ? (currentTrial / TOTAL_TRIALS * 100).toFixed(0) : 0;
-  document.getElementById('hud-prog').style.width = pct + '%';
+  // Progress bar driven by confidence in phase 1, trial count in phase 2
+  if (sessionPhase === 2) {
+    const ph2Done  = trials.filter(t => t.sessionPhase === 2).length;
+    const ph2Total = phase2Trials.length || 1;
+    document.getElementById('hud-prog').style.width =
+      Math.round(ph2Done / ph2Total * 100) + '%';
+  }
   if (medianT1RT) {
     document.getElementById('hud-t1rt').textContent = Math.round(medianT1RT) + 'ms';
   }
@@ -1009,19 +1194,12 @@ function endSession() {
   if (animFrame) cancelAnimationFrame(animFrame);
   window.removeEventListener('resize', () => {});
   document.getElementById('tap-overlay').style.display = 'none';
+  document.getElementById('btn-advance').style.opacity = '0';
+  document.getElementById('btn-advance').style.pointerEvents = 'none';
 
   const validTrials = trials.filter(t => t.valid);
   const discarded   = trials.filter(t => t.valid === false).length;
-
-  // ── Compute per-SOA detection rates across contrast levels ───────
-  // detMap: { soa_ms → { contrast_pct → { hits, total } } }
-  const detMap = {};
-  validTrials.forEach(t => {
-    if (!detMap[t.soa_ms]) detMap[t.soa_ms] = {};
-    if (!detMap[t.soa_ms][t.contrast_pct]) detMap[t.soa_ms][t.contrast_pct] = { hits: 0, total: 0 };
-    detMap[t.soa_ms][t.contrast_pct].total++;
-    if (t.detected) detMap[t.soa_ms][t.contrast_pct].hits++;
-  });
+  // detMap is already populated live — use it directly
 
   // ── Estimate threshold per SOA ────────────────────────────────────
   const soaThresholds = Object.keys(detMap).map(Number).sort((a,b)=>a-b).map(soa => ({
@@ -1052,14 +1230,22 @@ function endSession() {
 
   const t1RTMean = t1RTs.length ? Math.round(t1RTs.reduce((a,b)=>a+b,0) / t1RTs.length) : '—';
 
+  const ph1Valid = trials.filter(t => t.sessionPhase===1 && t.valid).length;
+  const ph2Valid = trials.filter(t => t.sessionPhase===2 && t.valid).length;
+  const ph2info  = phase2Trough2Pred
+    ? `Phase 2 targeted T2 @ <strong>${phase2Trough2Pred}ms</strong> · ${ph2Valid} valid trials.`
+    : 'Phase 2 not reached.';
+
   const interpText = fit
     ? `<strong>${fit.f.toFixed(1)} Hz</strong> theta · τ=${fit.tau}ms decay · A=${fit.A.toFixed(1)}% amplitude.<br>` +
-      `Trough 1: <strong>${fit.troughs[0].threshold_pct}%</strong> threshold @ ${fit.troughs[0].soa_ms}ms · ` +
+      `Trough 1: <strong>${fit.troughs[0].threshold_pct}%</strong> @ ${fit.troughs[0].soa_ms}ms · ` +
       `Trough 2: <strong>${fit.troughs[1].threshold_pct}%</strong> @ ${fit.troughs[1].soa_ms}ms · ` +
       `Trough 3: <strong>${fit.troughs[2].threshold_pct}%</strong> @ ${fit.troughs[2].soa_ms}ms.<br>` +
-      `Baseline: ${fit.base.toFixed(1)}%. Fit RMSE: ${fit.rmse.toFixed(1)}% contrast.<br><br>` +
-      `Valid: <strong>${validTrials.length}</strong>/${TOTAL_TRIALS} (${discarded} discarded). Mean T1 RT: <strong>${t1RTMean}ms</strong>.`
-    : `Insufficient data for curve fit. Valid: ${validTrials.length}/${TOTAL_TRIALS}. Mean T1 RT: ${t1RTMean}ms.`;
+      `Baseline: ${fit.base.toFixed(1)}%. Fit RMSE: ${fit.rmse.toFixed(1)}%.<br>` +
+      `Phase 1: ${ph1Valid} valid trials. ${ph2info}<br>` +
+      `Valid total: <strong>${validTrials.length}</strong>/${TOTAL_TRIALS} (${discarded} discarded). Mean T1 RT: <strong>${t1RTMean}ms</strong>.`
+    : `Insufficient data for curve fit — need clearer threshold crossings.<br>${ph2info}<br>` +
+      `Valid: ${validTrials.length}/${TOTAL_TRIALS}. Mean T1 RT: ${t1RTMean}ms.`;
 
   document.getElementById('blink-interp').innerHTML = interpText;
 
@@ -1213,10 +1399,10 @@ function drawThresholdChart(soaThresholds, fit) {
 //  CSV EXPORT
 // ════════════════════════════════════════════════════════════════════
 function downloadCSV() {
-  let csv = 'Trial,SOA_ms,T2_Contrast_pct,T1_Char,T2_Char,T1_Tapped,T1_RT_ms,T2_Detected,T2_RT_ms,Valid\n';
+  let csv = 'Trial,Phase,SOA_ms,T2_Contrast_pct,T1_Char,T2_Char,T1_Tapped,T1_RT_ms,T2_Detected,T2_RT_ms,Valid\n';
   trials.forEach((t, i) => {
     if (t.detected === null && t.valid !== false) return;
-    csv += `${i+1},${t.soa_ms},${t.contrast_pct.toFixed(1)},` +
+    csv += `${i+1},${t.sessionPhase??1},${t.soa_ms},${t.contrast_pct.toFixed(1)},` +
            `${t.t1Char??''},${t.t2Char??''},` +
            `${t.t1Tapped ? 1 : 0},${t.t1RT !== null ? Math.round(t.t1RT) : ''},` +
            `${t.detected ? 1 : 0},${t.t2RT !== null ? Math.round(t.t2RT) : ''},` +
@@ -1238,7 +1424,7 @@ function downloadCSV() {
   const fit = fitDampedSine(soaThresholds);
 
   csv += '\nSummary\n';
-  csv += `Paradigm,θ WAVE v3.1 — Structured Grid\n`;
+  csv += `Paradigm,θ WAVE v3.2 — Structured Grid\n`;
   csv += `Model,Offline damped sine fit\n`;
 
   csv += '\nSettings\n';
@@ -1248,7 +1434,12 @@ function downloadCSV() {
   csv += `SOA_min_ms,${SOA_MIN_MS}\n`;
   csv += `SOA_max_ms,${CFG.soaMaxMs}\n`;
   csv += `Reps_per_cell,${CFG.repsPerCell}\n`;
-  csv += `Grid_n_soas,${GRID_N_SOAS}\n`;
+  csv += `Phase1_soas,${phase1Soas.join('|')}\n`;
+  csv += `Phase2_soas,${phase2Soas.join('|')||'not_reached'}\n`;
+  csv += `Phase2_trough2_pred_ms,${phase2Trough2Pred||''}\n`;
+  csv += `Trough1_estimate_ms,${trough1Result?.trough1Ms||''}\n`;
+  csv += `Peak1_estimate_ms,${trough1Result?.peak1Ms||''}\n`;
+  csv += `Hz_estimate_phase1,${trough1Result?.hzEst||''}\n`;
   csv += `Grid_contrasts,${GRID_CONTRASTS.join('|')}\n`;
   csv += `Total_trials,${TOTAL_TRIALS}\n`;
   csv += `Mask_enabled,${CFG.maskEnabled}\n`;
@@ -1284,7 +1475,7 @@ function downloadCSV() {
   const blob = new Blob([csv], { type: 'text/csv' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
-  a.href = url; a.download = `theta_v31_${Date.now()}.csv`; a.click();
+  a.href = url; a.download = `theta_v32_${Date.now()}.csv`; a.click();
   URL.revokeObjectURL(url);
   toast('CSV exported');
 }
@@ -1303,7 +1494,7 @@ function saveResult(fit, nValid) {
     trough1:  fit ? fit.troughs[0] : null,
     trough2:  fit ? fit.troughs[1] : null,
     trials:   nValid,
-    paradigm: 'v3.1',
+    paradigm: 'v3.2',
     date: new Date().toLocaleDateString(),
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   });
