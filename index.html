@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.json">
-<title>θ WAVE v3.0 — Attentional Blink Lab</title>
+<title>θ WAVE v3.1 — Attentional Blink Lab</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
@@ -169,7 +169,7 @@
 <div id="home-screen" class="screen">
   <div>
     <div class="logo-theta">θ</div>
-    <div class="logo-sub">Neural Theta Frequency Estimator · v3.0</div>
+    <div class="logo-sub">Neural Theta Frequency Estimator · v3.1</div>
   </div>
   <div class="badge-row">
     <span class="badge">Twitch Paradigm</span>
@@ -183,7 +183,7 @@
     <p>A digit flashes among letters — tap when you see it. Shortly after, another digit appears — tap if you see it. Your pattern of misses across SOA and contrast levels reveals the attentional blink threshold curve. A damped sine is fitted offline to estimate theta frequency.</p>
   </div>
   <div class="changelog">
-    <strong>v3.0:</strong> Fully structured SOA × contrast grid &middot; Balanced randomised block design &middot; No adaptive engine — all cells pre-specified &middot; Threshold estimated per-SOA from detection rates &middot; Damped sine fitted offline to threshold curve
+    <strong>v3.1:</strong> Contrast grid shifted up (20–100%) &middot; 7 SOAs concentrated in blink zone &middot; Default 6 reps per cell (252 trials) &middot; Pure black (100%) as contrast ceiling
   </div>
 
   <div class="settings-panel">
@@ -220,7 +220,7 @@
         <span class="setting-name">Reps per Cell</span>
         <span class="setting-val" id="lbl-reps">—</span>
       </div>
-      <input type="range" class="setting-slider" id="sl-reps" min="2" max="8" step="1" value="4" oninput="updateSettings()">
+      <input type="range" class="setting-slider" id="sl-reps" min="2" max="8" step="1" value="6" oninput="updateSettings()">
     </div>
 
     <div class="settings-divider"></div>
@@ -436,8 +436,8 @@ function calibrate() {
 //  No adaptive selection — every cell pre-specified at session start.
 // ════════════════════════════════════════════════════════════════════
 const SOA_MIN_MS   = 200; // floor — below this is sensory masking, not AB
-const GRID_N_SOAS  = 10;
-const GRID_CONTRASTS = [10, 20, 35, 55, 75, 90]; // %, 6 levels
+const GRID_N_SOAS  = 7;   // 7 SOAs concentrated in blink zone
+const GRID_CONTRASTS = [20, 35, 55, 75, 90, 100]; // %, 6 levels — shifted up, 100=pure black
 
 const GRID = (() => {
   // Threshold estimation: for each SOA, fit a logistic to
@@ -557,7 +557,7 @@ let CFG = {
   framesPerItem: 9,   // 75ms at 120Hz
   t1FontPx:      96,
   soaMaxMs:      800,
-  repsPerCell:   4,
+  repsPerCell:   6,
   maskEnabled:   false,
 };
 let FRAMES_PER_ITEM = CFG.framesPerItem;
@@ -1238,7 +1238,7 @@ function downloadCSV() {
   const fit = fitDampedSine(soaThresholds);
 
   csv += '\nSummary\n';
-  csv += `Paradigm,θ WAVE v3.0 — Structured Grid\n`;
+  csv += `Paradigm,θ WAVE v3.1 — Structured Grid\n`;
   csv += `Model,Offline damped sine fit\n`;
 
   csv += '\nSettings\n';
@@ -1284,7 +1284,7 @@ function downloadCSV() {
   const blob = new Blob([csv], { type: 'text/csv' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
-  a.href = url; a.download = `theta_v3_${Date.now()}.csv`; a.click();
+  a.href = url; a.download = `theta_v31_${Date.now()}.csv`; a.click();
   URL.revokeObjectURL(url);
   toast('CSV exported');
 }
@@ -1303,7 +1303,7 @@ function saveResult(fit, nValid) {
     trough1:  fit ? fit.troughs[0] : null,
     trough2:  fit ? fit.troughs[1] : null,
     trials:   nValid,
-    paradigm: 'v3.0',
+    paradigm: 'v3.1',
     date: new Date().toLocaleDateString(),
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   });
