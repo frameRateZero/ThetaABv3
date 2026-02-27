@@ -1,4 +1,4 @@
-const CACHE = 'theta-wave-v3.0';
+const CACHE = 'theta-wave-v3.1';
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./manifest.json'])));
